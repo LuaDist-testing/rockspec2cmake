@@ -1,15 +1,15 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "rockspec2cmake"
-version = "0.2-1"
+version = "0.3-1"
 -- LuaDist source
 source = {
-  tag = "0.2-1",
+  tag = "0.3-1",
   url = "git://github.com/LuaDist-testing/rockspec2cmake.git"
 }
 -- Original source
 -- source = {
---     tag = "0.2-1",
+--     tag = "0.3-1",
 --     url = "git://github.com/f4rnham/rockspec2cmake.git"
 -- }
 description = {

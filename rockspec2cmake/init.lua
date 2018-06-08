@@ -1,8 +1,7 @@
-module("rockspec2cmake", package.seeall)
-
 local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
 local pl = require "pl.import_into"()
 
+local rockspec2cmake = {}
 
 -- Converts lua table into string useable for initialization of CMake list.
 -- Encloses each value of table in double quotes ("), escapes double quotes
@@ -156,7 +155,7 @@ end
 -- as string, or returns nil, error_message on error.
 -- If argument 'output_dir' is provided, this function creates file CMakeLists.txt
 -- in provided directory
-function process_rockspec(rockspec, output_dir)
+function rockspec2cmake.process_rockspec(rockspec, output_dir)
     assert(type(rockspec) == "table", "rockspec2cmake.process_rockspec: Argument 'rockspec' is not a table.")
     assert(output_dir == nil or (type(output_dir) == "string" and pl.path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
 
@@ -212,3 +211,5 @@ function process_rockspec(rockspec, output_dir)
 
     return cmake_commands
 end
+
+return rockspec2cmake

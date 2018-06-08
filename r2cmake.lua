@@ -1,7 +1,6 @@
 local r2cmake = require 'rockspec2cmake'
 local pl = require "pl.import_into"()
 
-
 local function load_rockspec(filename)
     local fd, err = io.open(filename)
     if not fd then

@@ -1,19 +1,17 @@
 local pl = require "pl.import_into"()
 
-module("rockspec2cmake", package.seeall)
-
--- All valid supported_platforms from rockspec file and their cmake counterparts
+-- All valid supported_platforms from rockspec file
 local rock2cmake_platform =
 {
-    ["unix"] = "UNIX",
-    ["linux"] = "UNIX",
-    ["freebsd"] = "UNIX",
-    ["macosx"] = "APPLE",
-    ["windows"] = "WIN32",
-    ["win32"] = "WIN32",
-    ["mingw32"] = "WIN32",
-    ["msys"] = "WIN32",
-    ["cygwin"] = "CYGWIN",
+    ["unix"] = true,
+    ["linux"] = true,
+    ["freebsd"] = true,
+    ["macosx"] = true,
+    ["windows"] = true,
+    ["win32"] = true,
+    ["mingw32"] = true,
+    ["msys"] = true,
+    ["cygwin"] = true,
 }
 
 local intro = pl.text.Template[[
@@ -36,6 +34,26 @@ set(INSTALL_SHARE share CACHE PATH "Directory for shared data.")
 set(INSTALL_LMOD ${dollar}{INSTALL_LIB}/lua/${dollar}{LUA_VERSION_MAJOR}.${dollar}{LUA_VERSION_MINOR} CACHE PATH "Directory to install Lua modules.")
 set(INSTALL_CMOD ${dollar}{INSTALL_LIB}/lua/${dollar}{LUA_VERSION_MAJOR}.${dollar}{LUA_VERSION_MINOR} CACHE PATH "Directory to install Lua binary modules.")
 
+## Platform detection
+# By default use system name
+set(DETECTED_PLATFORM ${dollar}{CMAKE_SYSTEM_NAME})
+string(TOLOWER ${dollar}{DETECTED_PLATFORM} DETECTED_PLATFORM)
+
+# Overrides for more specific platforms
+if (DETECTED_PLATFORM STREQUAL "darwin")
+    set(DETECTED_PLATFORM macosx)
+elseif (MINGW)
+    set(DETECTED_PLATFORM mingw32)
+elseif (MSYS)
+    set(DETECTED_PLATFORM msys)
+elseif (CYGWIN)
+    set(DETECTED_PLATFORM cygwin)
+elseif (WIN32)
+    set(DETECTED_PLATFORM win32)
+elseif (UNIX)
+    set(DETECTED_PLATFORM unix)
+endif()
+
 ]]
 
 local fatal_error_msg = pl.text.Template[[
@@ -44,7 +62,7 @@ message(FATAL_ERROR "${message}")
 ]]
 
 local unsupported_platform_check = pl.text.Template [[
-if (${platform})
+if (DETECTED_PLATFORM STREQUAL ${platform})
     message(FATAL_ERROR "Unsupported platform (your platform was explicitly marked as not supported)")
 endif()
 
@@ -69,7 +87,7 @@ set(${name} ${value})
 ]]
 
 local platform_specific_block = pl.text.Template[[
-if (${platform})
+if (DETECTED_PLATFORM STREQUAL ${platform})
 ${definitions}endif()
 
 ]]
@@ -182,7 +200,7 @@ end
 
 function CMakeBuilder:platform_valid(platform)
     if rock2cmake_platform[platform] == nil then
-        self:fatal_error("CMake alternative to platform '" .. platform .. "' was not defined," ..
+        self:fatal_error("Platform '" .. platform .. "' was not recognized," ..
             "cmake actions for this platform were not generated")
         return nil
     end
@@ -265,18 +283,18 @@ function CMakeBuilder:generate()
     end
 
     -- Unsupported platforms
-    for _, plat in pl.tablex.sort(self.unsupported_platforms) do
-        res = res .. unsupported_platform_check:substitute({platform = rock2cmake_platform[plat]})
+    for _, platform in pl.tablex.sort(self.unsupported_platforms) do
+        res = res .. unsupported_platform_check:substitute({platform = platform})
     end
 
     -- Supported platforms
     if #self.supported_platforms ~= 0 then
         local supported_platforms_check_str = ""
-        for _, plat in pl.tablex.sort(self.supported_platforms) do
+        for _, platform in pl.tablex.sort(self.supported_platforms) do
             if supported_platforms_check_str == "" then
-                supported_platforms_check_str = "NOT " .. rock2cmake_platform[plat]
+                supported_platforms_check_str = "NOT (DETECTED_PLATFORM STREQUAL " .. platform .. ")"
             else
-                supported_platforms_check_str = supported_platforms_check_str .. " AND NOT " .. rock2cmake_platform[plat]
+                supported_platforms_check_str = supported_platforms_check_str .. " AND NOT (DETECTED_PLATFORM STREQUAL " .. platform .. ")"
             end
         end
 
@@ -294,7 +312,7 @@ function CMakeBuilder:generate()
             definitions = definitions .. indent(find_ext_dep:substitute({name = name, dollar = "$"}))
         end
 
-        res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
+        res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
     end
 
     -- Default (not overriden) variables
@@ -310,7 +328,7 @@ function CMakeBuilder:generate()
             definitions = definitions .. indent(set_variable:substitute({name = name, value = value}))
         end
 
-        res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
+        res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
     end
 
     -- install.{lua|conf|bin|lib} and copy_directories
@@ -336,7 +354,7 @@ function CMakeBuilder:generate()
         end
 
         if definitions ~= "" then
-            res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
+            res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
         end
     end
 
@@ -357,7 +375,7 @@ function CMakeBuilder:generate()
         end
 
         if definitions ~= "" then
-            res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
+            res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
         end
     end
 
