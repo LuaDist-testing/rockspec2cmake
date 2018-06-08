@@ -1,4 +1,4 @@
-local Template = require 'pl.text'.Template
+local pl = require "pl.import_into"()
 
 module("rockspec2cmake", package.seeall)
 
@@ -16,12 +16,14 @@ local rock2cmake_platform =
     ["cygwin"] = "CYGWIN",
 }
 
-local intro = Template[[
+local intro = pl.text.Template[[
 # Generated Cmake file begin
 cmake_minimum_required(VERSION 3.1)
 
 project(${package_name} C CXX)
+set(${package_name}_VERSION ${package_version})
 
+set(ENV{LUA_DIR} ${dollar}{CMAKE_INSTALL_PREFIX})
 find_package(Lua REQUIRED)
 
 ## INSTALL DEFAULTS (Relative to CMAKE_INSTALL_PREFIX)
@@ -36,43 +38,43 @@ set(INSTALL_CMOD ${dollar}{INSTALL_LIB}/lua/${dollar}{LUA_VERSION_MAJOR}.${dolla
 
 ]]
 
-local fatal_error_msg = Template[[
+local fatal_error_msg = pl.text.Template[[
 message(FATAL_ERROR "${message}")
 
 ]]
 
-local unsupported_platform_check = Template [[
+local unsupported_platform_check = pl.text.Template [[
 if (${platform})
     message(FATAL_ERROR "Unsupported platform (your platform was explicitly marked as not supported)")
 endif()
 
 ]]
 
-local supported_platform_check = Template [[
+local supported_platform_check = pl.text.Template [[
 if (${expr})
     message(FATAL_ERROR "Unsupported platform (your platform is not in list of supported platforms)")
 endif()
 
 ]]
 
-local find_ext_dep = Template [[
+local find_ext_dep = pl.text.Template [[
 find_package(${name})
 set(${name}_LIBDIR ${dollar}{${name}_LIBRARIES})
 set(${name}_INCDIR ${dollar}{${name}_INCLUDE_DIRS})
 
 ]]
 
-local set_variable = Template [[
+local set_variable = pl.text.Template [[
 set(${name} ${value})
 ]]
 
-local platform_specific_block = Template[[
+local platform_specific_block = pl.text.Template[[
 if (${platform})
 ${definitions}endif()
 
 ]]
 
-local build_install_copy = Template[[
+local build_install_copy = pl.text.Template[[
 install(DIRECTORY ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{INSTALL_SHARE}/${package_name})
 
 function(build_install KEYS DIR)
@@ -91,11 +93,11 @@ build_install(BUILD_INSTALL_bin ${dollar}{INSTALL_BIN})
 
 ]]
 
-local install_lua_module = Template[[
+local install_lua_module = pl.text.Template[[
 install(FILES ${dollar}{${name}_SOURCES} DESTINATION ${dollar}{INSTALL_LMOD}/${dest} RENAME ${new_name})
 ]]
 
-local cxx_module = Template [[
+local cxx_module = pl.text.Template [[
 add_library(${name} SHARED ${dollar}{${name}_SOURCES})
 
 foreach(LIBRARY ${dollar}{${name}_LIB_NAMES})
@@ -135,11 +137,10 @@ end
 
 -- CMakeBuilder
 CMakeBuilder = {}
+CMakeBuilder.__index = CMakeBuilder
 
-function CMakeBuilder:new(o, package_name)
-    o = o or {}
-    setmetatable(o, self)
-    self.__index = self
+function CMakeBuilder.new(package_name, package_version)
+    local self = setmetatable({}, CMakeBuilder)
 
     -- Tables with string values, for *_platforms tables, only values in
     -- rock2cmake_platform are inserted
@@ -175,7 +176,8 @@ function CMakeBuilder:new(o, package_name)
     self.override_cxx_targets = {}
 
     self.package_name = package_name
-    return o
+    self.package_version = package_version
+    return self
 end
 
 function CMakeBuilder:platform_valid(platform)
@@ -255,22 +257,22 @@ end
 function CMakeBuilder:generate()
     local res = ""
 
-    res = res .. intro:substitute({package_name = self.package_name, dollar = "$"})
+    res = res .. intro:substitute({package_name = self.package_name, package_version = self.package_version, dollar = "$"})
 
     -- Print all fatal errors at the beginning
-    for error_msg, _  in pairs(self.errors) do
+    for error_msg, _  in pl.tablex.sort(self.errors) do
         res = res .. fatal_error_msg:substitute({message = error_msg})
     end
 
     -- Unsupported platforms
-    for _, plat in pairs(self.unsupported_platforms) do
+    for _, plat in pl.tablex.sort(self.unsupported_platforms) do
         res = res .. unsupported_platform_check:substitute({platform = rock2cmake_platform[plat]})
     end
 
     -- Supported platforms
     if #self.supported_platforms ~= 0 then
         local supported_platforms_check_str = ""
-        for _, plat in pairs(self.supported_platforms) do
+        for _, plat in pl.tablex.sort(self.supported_platforms) do
             if supported_platforms_check_str == "" then
                 supported_platforms_check_str = "NOT " .. rock2cmake_platform[plat]
             else
@@ -282,13 +284,13 @@ function CMakeBuilder:generate()
     end
 
     -- External dependencies
-    for name, _ in pairs(self.ext_deps) do
+    for name, _ in pl.tablex.sort(self.ext_deps) do
         res = res .. find_ext_dep:substitute({name = name, dollar = "$"})
     end
 
-    for platform, ext_deps in pairs(self.override_ext_deps) do
+    for platform, ext_deps in pl.tablex.sort(self.override_ext_deps) do
         local definitions = ""
-        for name, _ in pairs(ext_deps) do
+        for name, _ in pl.tablex.sort(ext_deps) do
             definitions = definitions .. indent(find_ext_dep:substitute({name = name, dollar = "$"}))
         end
 
@@ -296,15 +298,15 @@ function CMakeBuilder:generate()
     end
 
     -- Default (not overriden) variables
-    for name, value in pairs(self.cmake_variables) do
+    for name, value in pl.tablex.sort(self.cmake_variables) do
         res = res .. set_variable:substitute({name = name, value = value})
     end
     res = res .. "\n"
 
     -- Platform overriden variables
-    for platform, variables in pairs(self.override_cmake_variables) do
+    for platform, variables in pl.tablex.sort(self.override_cmake_variables) do
         local definitions = ""
-        for name, value in pairs(variables) do
+        for name, value in pl.tablex.sort(variables) do
             definitions = definitions .. indent(set_variable:substitute({name = name, value = value}))
         end
 
@@ -315,7 +317,7 @@ function CMakeBuilder:generate()
     res = res .. build_install_copy:substitute({package_name = self.package_name, dollar = "$"})
 
     -- Lua targets, install only
-    for _, name in pairs(self.lua_targets) do
+    for _, name in pl.tablex.sort(self.lua_targets) do
         -- Force install file as name.lua, rename if needed
         res = res .. install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
         new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"})
@@ -323,9 +325,9 @@ function CMakeBuilder:generate()
     res = res .. "\n"
 
     -- Platform specific Lua targets
-    for platform, targets in pairs(self.override_lua_targets) do
+    for platform, targets in pl.tablex.sort(self.override_lua_targets) do
         local definitions = ""
-        for _, name in pairs(targets) do
+        for _, name in pl.tablex.sort(targets) do
             if self.lua_targets[name] == nil then
                 -- Force install file as name.lua, rename if needed
                 definitions = definitions .. indent(install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
@@ -339,15 +341,15 @@ function CMakeBuilder:generate()
     end
 
     -- Cxx targets
-    for _, name in pairs(self.cxx_targets) do
+    for _, name in pl.tablex.sort(self.cxx_targets) do
         res = res .. cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
             output_name = name_from_lua_notation(name), dollar = "$"})
     end
 
     -- Platform specific cxx targets
-    for platform, targets in pairs(self.override_cxx_targets) do
+    for platform, targets in pl.tablex.sort(self.override_cxx_targets) do
         local definitions = ""
-        for _, name in pairs(targets) do
+        for _, name in pl.tablex.sort(targets) do
             if self.cxx_targets[name] == nil then
                 definitions = definitions .. indent(cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
                     output_name = name_from_lua_notation(name), dollar = "$"}))
